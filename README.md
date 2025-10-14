@@ -15,7 +15,11 @@ Perfect for rebuilding your system after a fresh install — or cloning your per
 
 - 🧱 **Full Debian 13 Minimal setup**  
   Installs all base X11 + build dependencies  
-  Optional **Liquorix kernel** installation  
+  Optional **Liquorix kernel** installation
+  
+  - 🔐 **Encrypted Backups (AES-256)**  
+  Backups are protected using **AES-256 encryption** with an interactive **password prompt** during creation and restore.  
+  (Compatible with `unzip` and `7z`.)
 
 - 🎮 **GPU Driver Installer**  
   Choose NVIDIA / AMD / Intel  
