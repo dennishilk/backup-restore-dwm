@@ -1,6 +1,6 @@
 > ⚡ Your entire DWM desktop — rebuilt, restored, and optimized in minutes.
 > 
-# 🧩 Desktop Manager v8 – Ultimate Edition
+# 🧩 backup-restore-dwm
 
 **Author:** Dennis Hilk  
 **Tested on:** Debian 13 Minimal  
@@ -60,5 +60,5 @@ Perfect for rebuilding your system after a fresh install — or cloning your per
 sudo apt install dialog git curl unzip -y
 mkdir -p ~/.local/bin
 cd ~/.local/bin
-wget https://raw.githubusercontent.com/dennishilk/desktop-manager/main/desktop-manager.sh
-chmod +x desktop-manager.sh
+wget https://raw.githubusercontent.com/dennishilk/backup-restore-dwm/main/backup-restore.sh
+chmod +x backup-restore.sh
