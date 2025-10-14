@@ -55,7 +55,7 @@ Perfect for rebuilding your system after a fresh install — or cloning your per
 | `rofi`, `dunst`, `sxhkd`, `kitty` | Desktop utilities |
 | *(optional)* `nvidia-driver`, `firmware-amd-graphics`, `xserver-xorg-video-intel` | GPU drivers |
 | *(optional)* `zram-tools`, `liquorix kernel` | Performance tuning |
-
+| *(optional)* `zip`, `unzip` | Required for encrypted backups |
 ---
 
 ## 🚀 Installation
