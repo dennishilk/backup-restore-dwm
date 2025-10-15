@@ -24,6 +24,20 @@ Perfect for rebuilding your system after a fresh install — or cloning your per
 | 🖼 Wallpaper | Adds feh hook for `~/.config/suckless/wallpapers/1.png` |
 | ⚙️ Deps | Automatically installs `dialog`, `zip`, `unzip`, `feh`, build tools |
 
+## ⚙️ want my full setup ?
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.zip
+> 
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z01
+> 
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z02
+> 
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z03
+> 
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z04
+> 
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z05
+> 
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z06
 
 ---
 
@@ -49,3 +63,4 @@ mkdir -p ~/.local/bin
 cd ~/.local/bin
 wget https://raw.githubusercontent.com/dennishilk/backup-restore-dwm/main/backup-restore.sh
 chmod +x backup-restore.sh
+
