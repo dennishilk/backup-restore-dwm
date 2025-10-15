@@ -9,17 +9,19 @@ TITLE="🧠 DWM Backup & Restore Tool"
 BACKUP_DIR="./backups"
 SPLIT_SIZE="95m"
 
-# ────────────────────────────────
-# Helpers
-# ────────────────────────────────
+# ───────────────────────────────────────────────
+# Helper functions
+# ───────────────────────────────────────────────
 need() { command -v "$1" >/dev/null 2>&1 || sudo apt install -y "$1"; }
 pause() { dialog --msgbox "$1" 15 75; }
 ensure_base_deps() { sudo apt update -y >/dev/null 2>&1; for p in dialog zip unzip sha256sum; do need "$p"; done; }
-hr() { printf '%*s\n' "${COLUMNS:-80}" '' | tr ' ' '─'; }
 
-# ────────────────────────────────
+# horizontal line generator
+hr() { printf '%0.s─' {1..70}; }
+
+# ───────────────────────────────────────────────
 # Create encrypted backup
-# ────────────────────────────────
+# ───────────────────────────────────────────────
 create_backup() {
   ensure_base_deps
   mkdir -p "$BACKUP_DIR"
@@ -28,26 +30,21 @@ create_backup() {
   local BASENAME="dwm-backup_$TS"
   local ZIP_PATH="$BACKUP_DIR/$BASENAME.zip"
 
-  # Select mode: split or single
+  # Ask for split or single
   local MODE
   MODE=$(dialog --stdout --menu "📦 Choose backup format:" 12 60 4 \
     1 "Single AES-256 ZIP (one large file)" \
     2 "Split into 100 MB chunks (GitHub-friendly)" ) || return
-
   local SPLIT_ARG=""
   [ "$MODE" = "2" ] && SPLIT_ARG="-s $SPLIT_SIZE"
 
-  # Password confirmation
+  # Password input
   local PW1 PW2
   PW1=$(dialog --insecure --passwordbox "🔒 Enter password for encryption:" 10 60 3>&1 1>&2 2>&3) || return
   PW2=$(dialog --insecure --passwordbox "🔑 Confirm password:" 10 60 3>&1 1>&2 2>&3) || return
-  if [ "$PW1" != "$PW2" ] || [ -z "$PW1" ]; then
-    pause "⚠️ Passwords do not match or are empty."
-    return
-  fi
+  if [ "$PW1" != "$PW2" ] || [ -z "$PW1" ]; then pause "⚠️ Passwords do not match or are empty."; return; fi
 
-  dialog --infobox "📦 Creating AES-256 encrypted backup...\n⌛ Please wait..." 7 60
-  sleep 0.5
+  dialog --infobox "📦 Creating AES-256 encrypted backup...\n⌛ Please wait..." 7 60; sleep 0.5
 
   local INCLUDE_PATHS=(
     "$HOME/.config/suckless"
@@ -67,27 +64,52 @@ create_backup() {
   verify_backup "$ZIP_PATH" "$PW1"
 }
 
-# ────────────────────────────────
-# Verify backup
-# ────────────────────────────────
+# ───────────────────────────────────────────────
+# Verify backup integrity + analyze content
+# ───────────────────────────────────────────────
 verify_backup() {
-  local MAIN_ZIP="$1" PASSWORD="$2"
-  local DIR=$(dirname "$MAIN_ZIP") BASE=$(basename "$MAIN_ZIP") PREFIX="${BASE%.*}"
-  cd "$DIR"
+  local MAIN_ZIP="$1"
+  local PASSWORD="$2"
 
+  # Safety checks
+  if [ -z "$MAIN_ZIP" ] || [ ! -f "$MAIN_ZIP" ]; then
+    pause "❌ Backup file not found or invalid path."
+    return 1
+  fi
+
+  local DIR BASE PREFIX
+  DIR="$(dirname "$MAIN_ZIP")"
+  BASE="$(basename "$MAIN_ZIP")"
+  PREFIX="${BASE%.*}"
+
+  cd "$DIR" || { pause "⚠️ Cannot access directory $DIR"; return 1; }
+
+  # Detect split parts
   local PARTS=($(ls "$PREFIX".z* 2>/dev/null || true))
-  local SIZE_TOTAL=$(du -ch "$PREFIX".z* "$PREFIX.zip" 2>/dev/null | tail -1 | awk '{print $1}')
-  local SHA256=$(sha256sum "$PREFIX.zip" | awk '{print $1}')
+  local SIZE_TOTAL; SIZE_TOTAL=$(du -ch "$PREFIX".z* "$PREFIX.zip" 2>/dev/null | tail -1 | awk '{print $1}')
+  local SHA256; SHA256=$(sha256sum "$PREFIX.zip" | awk '{print $1}')
 
+  # Quick test for AES integrity
   unzip -t -P "$PASSWORD" "$PREFIX.zip" >/tmp/verify_log 2>&1
   local STATUS=$?
+
+  # Content stats
+  local TMPDIR="/tmp/dwm_list_$RANDOM"
+  mkdir -p "$TMPDIR"
+  unzip -l -P "$PASSWORD" "$PREFIX.zip" >"$TMPDIR/list.txt" 2>/dev/null || true
+  local FILES=$(grep -E '^[[:space:]]*[0-9]+' "$TMPDIR/list.txt" | wc -l)
+  local TOTALSIZE=$(grep -E '^[[:space:]]*[0-9]+' "$TMPDIR/list.txt" | awk '{sum+=$1} END{print sum/1024/1024 " MB"}')
+  local FOLDERS=$(grep -E '/$' "$TMPDIR/list.txt" | wc -l)
+  rm -rf "$TMPDIR"
 
   local RESULT="⚙️  DWM Backup Integrity Check
 $(hr)
 📦 File base: $BASE
 📂 Location: $DIR
-🧱 Total parts: ${#PARTS[@]} + main zip
-💾 Total size: $SIZE_TOTAL
+🧱 Parts: ${#PARTS[@]} + main zip
+💾 Total size: ${SIZE_TOTAL:-unknown}
+📁 Folders: ${FOLDERS:-0}   📄 Files: ${FILES:-0}
+📊 Content size: ${TOTALSIZE:-N/A}
 🔐 AES-256 Encryption: Active
 🔑 SHA256: ${SHA256:0:32}...
 $(hr)
@@ -98,12 +120,13 @@ $(hr)
   else
     RESULT+="❌ Status: Verification failed.\n\n$(head -n 3 /tmp/verify_log)"
   fi
-  dialog --msgbox "$RESULT" 20 80
+
+  dialog --msgbox "$RESULT" 22 80
 }
 
-# ────────────────────────────────
+# ───────────────────────────────────────────────
 # Restore backup
-# ────────────────────────────────
+# ───────────────────────────────────────────────
 restore_backup() {
   ensure_base_deps
   local SEARCH_DIRS=("$BACKUP_DIR" "$(dirname "$(realpath "$0")")")
@@ -135,19 +158,24 @@ restore_backup() {
   fi
 
   rm /tmp/unzip_log; fc-cache -fv >/dev/null 2>&1 || true
-  local MSG="🧩 Restore Complete!\n$(hr)\n📂 Target: $HOME\n🔐 Verified: OK\n$(hr)\n✅ All systems online, Commander Dennis!"
+  local MSG="🧩 Restore Complete!
+$(hr)
+📂 Target: $HOME
+🔐 Verified: OK
+$(hr)
+✅ All systems online, Commander Dennis!"
   dialog --msgbox "$MSG" 18 80
 }
 
-# ────────────────────────────────
+# ───────────────────────────────────────────────
 # Menu
-# ────────────────────────────────
+# ───────────────────────────────────────────────
 main_menu() {
   ensure_base_deps; mkdir -p "$BACKUP_DIR"
   while true; do
     CHOICE=$(dialog --clear --backtitle "$TITLE" --title "Main Menu" \
       --menu "Choose an action:" 20 80 10 \
-      1 "🔒 Create encrypted backup (AES-256)" \
+      1 "🔒 Create encrypted backup (AES-256 + verify + stats)" \
       2 "🔐 Restore encrypted backup" \
       3 "❌ Exit" 3>&1 1>&2 2>&3) || break
     case "$CHOICE" in
