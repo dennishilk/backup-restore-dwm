@@ -1,7 +1,7 @@
-# 🧩 DWM Encrypted Backup & Restore Tool (Minimal v2.0)
+# 🧩 DWM Encrypted Backup & Restore Tool
 
 **Author:** Dennis Hilk  
-**Version:** v2.0.0  
+**Version:** v1.0.0  
 **Release Date:** 2025-10-17  
 
 ---
