@@ -41,7 +41,7 @@ install_official_suckless() {
     ["dwm"]="https://dl.suckless.org/dwm/dwm-6.5.tar.gz"
     ["st"]="https://dl.suckless.org/st/st-0.9.2.tar.gz"
     ["dmenu"]="https://dl.suckless.org/tools/dmenu-5.2.tar.gz"
-    ["slstatus"]="https://dl.suckless.org/slstatus/slstatus-1.0.tar.gz"
+    ["slstatus"]="https://github.com/drkhsh/slstatus/archive/refs/tags/1.0.tar.gz"
   )
 
   for TOOL in "${!TOOLS[@]}"; do
