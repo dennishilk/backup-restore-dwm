@@ -260,7 +260,7 @@ $(hr)
 📂 Target: $HOME
 🔐 Verified: OK
 $(hr)
-✅ All systems online, Commander !" 18 80
+✅ All systems online Commander !" 18 80
 }
 
 
