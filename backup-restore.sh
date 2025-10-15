@@ -129,6 +129,8 @@ $(hr)
 # ───────────────────────────────────────────────
 restore_backup() {
   ensure_base_deps
+
+  # Kandidaten in ./backups und im Skript-Ordner suchen
   local SEARCH_DIRS=("$BACKUP_DIR" "$(dirname "$(realpath "$0")")")
   local FOUND_FILES=()
   for DIR in "${SEARCH_DIRS[@]}"; do
@@ -136,36 +138,79 @@ restore_backup() {
     while IFS= read -r -d '' f; do FOUND_FILES+=("$f"); done \
       < <(find "$DIR" -maxdepth 1 -type f -name "*.zip" -print0 2>/dev/null)
   done
-  [ ${#FOUND_FILES[@]} -eq 0 ] && { pause "⚠️ No backup ZIPs found."; return; }
 
-  local MENU_ITEMS=(); for FILE in "${FOUND_FILES[@]}"; do MENU_ITEMS+=("$FILE" ""); done
-  local ZIP; ZIP=$(dialog --stdout --menu "Select backup to restore:" 20 80 10 "${MENU_ITEMS[@]}")
-  [ -z "$ZIP" ] && { pause "Cancelled."; return; }
-
-  dialog --insecure --passwordbox "Enter decryption password:" 10 60 2> /tmp/pw
-  local PW=$(cat /tmp/pw); rm /tmp/pw
-  local DIRNAME=$(dirname "$ZIP") BASENAME=$(basename "$ZIP") BASE_NOEXT="${BASENAME%.*}"
-  cd "$DIRNAME"
-
-  echo "🔓 Extracting..."
-  unzip -P "$PW" "$BASENAME" -d "$HOME" >/tmp/unzip_log 2>&1
-  local STATUS=$?
-  if [ $STATUS -ne 0 ]; then
-    if grep -qi "incorrect password" /tmp/unzip_log; then pause "❌ Wrong password."
-    elif grep -qi "End-of-central-directory" /tmp/unzip_log; then pause "⚠️ Incomplete archive."
-    else pause "⚠️ Extraction failed.\n\n$(head -n 5 /tmp/unzip_log)"; fi
-    rm /tmp/unzip_log; return
+  if [ ${#FOUND_FILES[@]} -eq 0 ]; then
+    pause "⚠️ No backup ZIPs found in:\n${SEARCH_DIRS[*]}"
+    return
   fi
 
-  rm /tmp/unzip_log; fc-cache -fv >/dev/null 2>&1 || true
+  # Auswahlmenü
+  local MENU_ITEMS=()
+  for FILE in "${FOUND_FILES[@]}"; do
+    MENU_ITEMS+=("$FILE" "")
+  done
+
+  local ZIP
+  ZIP=$(dialog --stdout --menu "Select backup to restore:" 20 80 10 "${MENU_ITEMS[@]}") || { pause "Cancelled."; return; }
+  [ -z "${ZIP:-}" ] && { pause "Cancelled."; return; }
+  [ -f "$ZIP" ] || { pause "❌ Selected file not found:\n$ZIP"; return; }
+
+  # Passwort
+  dialog --insecure --passwordbox "Enter decryption password:" 10 60 2> /tmp/pw || { pause "Cancelled."; return; }
+  local PW; PW="$(cat /tmp/pw)"; rm -f /tmp/pw
+
+  # Pfadteile ROBUST setzen (jede Variable separat)
+  local DIRNAME;    DIRNAME="$(dirname -- "$ZIP")"
+  local BASENAME;   BASENAME="$(basename -- "$ZIP")"
+  local BASE_NOEXT; BASE_NOEXT="${BASENAME%.*}"
+
+  # Sicherheit: erneut prüfen
+  [ -n "${DIRNAME:-}" ] || { pause "❌ DIRNAME not set."; return; }
+  [ -n "${BASENAME:-}" ] || { pause "❌ BASENAME not set."; return; }
+
+  cd "$DIRNAME" || { pause "⚠️ Cannot cd into:\n$DIRNAME"; return; }
+
+  # Info zu Split-Teilen
+  echo "🔎 Checking for split parts..."
+  local PARTS_FOUND=()
+  while IFS= read -r -d '' p; do PARTS_FOUND+=("$p"); done \
+    < <(find . -maxdepth 1 -type f -name "$BASE_NOEXT.z*" -print0 2>/dev/null)
+
+  if [ ${#PARTS_FOUND[@]} -gt 0 ]; then
+    echo "✅ Found split parts: ${#PARTS_FOUND[@]}"
+  else
+    echo "ℹ️ No split parts found (single ZIP)."
+  fi
+
+  # Entpacken
+  echo "🔓 Decrypting and extracting..."
+  unzip -P "$PW" -- "$BASENAME" -d "$HOME" >/tmp/unzip_log 2>&1
+  local STATUS=$?
+
+  if [ $STATUS -ne 0 ]; then
+    if grep -qi "incorrect password" /tmp/unzip_log; then
+      pause "❌ Wrong password."
+    elif grep -qi "End-of-central-directory" /tmp/unzip_log; then
+      pause "⚠️ Archive appears incomplete or split parts are missing."
+    else
+      pause "⚠️ Extraction failed.\n\n$(head -n 5 /tmp/unzip_log)"
+    fi
+    rm -f /tmp/unzip_log
+    return
+  fi
+
+  rm -f /tmp/unzip_log
+  fc-cache -fv >/dev/null 2>&1 || true
+
   local MSG="🧩 Restore Complete!
-$(hr)
+──────────────────────────────────────
 📂 Target: $HOME
 🔐 Verified: OK
-$(hr)
+──────────────────────────────────────
 ✅ All systems online, Commander Dennis!"
   dialog --msgbox "$MSG" 18 80
 }
+
 
 # ───────────────────────────────────────────────
 # Menu
