@@ -1,9 +1,9 @@
-# 🧩 DWM Encrypted Backup & Restore Tool (v4.1 – Nerd Edition)
+# 🧩 DWM Encrypted Backup & Restore Tool 
 
 **Author:** Dennis Hilk  
-**Version:** 4.1  
+**Version:** 1.0  
 **License:** MIT  
-**Release Date:** 2025-10-18  
+**Release Date:** 2025-10-15 
 
 ---
 
