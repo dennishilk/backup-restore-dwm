@@ -61,7 +61,6 @@ create_backup() {
   PW2=$(dialog --insecure --passwordbox "🔑 Confirm password:" 10 60 3>&1 1>&2 2>&3) || return
   if [ "$PW1" != "$PW2" ] || [ -z "$PW1" ]; then pause "⚠️ Passwords do not match or are empty."; return; fi
 
-  # Files to include
   local INCLUDE_PATHS=(
     "$HOME/.config/suckless"
     "$HOME/.config/rofi"
@@ -76,8 +75,34 @@ create_backup() {
 
   local FILE_COUNT
   FILE_COUNT=$(find "${INCLUDE_PATHS[@]}" 2>/dev/null | wc -l)
-  dialog --infobox "📦 Creating AES-256 encrypted backup...\n\n⌛ Estimated files: $FILE_COUNT" 7 60
+  local TOTAL_SIZE
+  TOTAL_SIZE=$(du -ch "${INCLUDE_PATHS[@]}" 2>/dev/null | tail -n 1 | awk '{print $1}')
+
+  dialog --infobox "📦 Creating AES-256 encrypted backup...\n⌛ Estimated files: $FILE_COUNT\n💾 Total size: $TOTAL_SIZE" 8 70
   sleep 1
+
+  # FIFO for live progress
+  local FIFO=/tmp/backup_progress_$$
+  mkfifo "$FIFO"
+
+  # Show gauge in background
+  dialog --gauge "Compressing and encrypting..." 10 70 0 < "$FIFO" &
+  local GAUGE_PID=$!
+
+  # Run zip with pv, send progress into FIFO
+  ( zip -r -e -P "$PW1" $SPLIT_ARG "$ZIP_PATH" "${INCLUDE_PATHS[@]}" 2>/dev/null | pv -n -s "$FILE_COUNT" > "$FIFO" ) >/dev/null 2>&1
+
+  # Cleanup
+  wait $GAUGE_PID 2>/dev/null || true
+  rm -f "$FIFO"
+
+  if [ ! -f "$ZIP_PATH" ]; then
+    pause "❌ Backup failed – no archive created."
+    return
+  fi
+
+  verify_backup "$ZIP_PATH" "$PW1"
+}
 
   # Use pv for visible progress
   {
