@@ -1,215 +1,286 @@
 #!/usr/bin/env bash
-# ──────────────────────────────────────────────────────────────
-#  Desktop Backup Tool (DWM & dotfiles) – Encrypted + Split
-#  Author: Dennis Hilk (for dennishilk)
-#  Features: dialog UI, AES-256 encryption, split archives (<100MB)
-#  Works on Debian 13 Minimal (auto-installs zip/unzip/dialog)
-# ──────────────────────────────────────────────────────────────
+# ╔════════════════════════════════════════════════════════════╗
+# ║   DWM Rebuilder Ultimate – Full Installer + Backup v1.0   ║
+# ║   Author: Dennis Hilk                                     ║
+# ║   Target: Debian 13 Minimal                               ║
+# ║   Installs your own DWM from ~/.config/suckless/dwm       ║
+# ║   Plus: ZRAM, extras, soundfix hook, AES-256 backup/restore║
+# ╚════════════════════════════════════════════════════════════╝
 
-set -o pipefail
+set -euo pipefail
 
-# ── CONFIG ────────────────────────────────────────────────────
-BACKUP_DIR="$(pwd)/backups"     # Zielordner für Backups (relativ zum Start-Ordner)
-SPLIT_SIZE="95m"                # Chunk-Größe für gesplittete ZIPs (GitHub <100MB)
-TMP_DIR="$BACKUP_DIR/.tmp"      # temporäres Arbeitsverzeichnis
+TITLE="DWM Rebuilder Ultimate"
+BACKUP_DIR="$(pwd)/backups"
+SPLIT_SIZE="95m"     # GitHub-friendly (<100MB)
 
-# Standard-Auswahl (Checkliste) – passe nach Bedarf an
-INCLUDE_PATHS=(
-  "$HOME/.config/suckless"
-  "$HOME/.config/kitty"
-  "$HOME/.config/rofi"
-  "$HOME/.config/dunst"
-  "$HOME/.config/picom"
-  "$HOME/.config/sxhkd"
-  "$HOME/.zshrc"
-  "$HOME/.p10k.zsh"
-  "$HOME/.oh-my-zsh"
-  "$HOME/.local/share/fonts"
-  "$HOME/bin"
-  "$HOME/.local/bin"
-)
-
-# ── HELPER ────────────────────────────────────────────────────
-need_pkg() {
+# ────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────
+need() {
   local pkg="$1"
   if ! command -v "$pkg" &>/dev/null; then
-    sudo apt update -y >/dev/null 2>&1
+    echo "Installing missing dep: $pkg"
+    sudo apt update -y >/dev/null 2>&1 || true
     sudo apt install -y "$pkg" >/dev/null 2>&1
   fi
 }
 
-ensure_deps() {
-  for p in dialog zip unzip; do
-    need_pkg "$p"
-  done
-  mkdir -p "$BACKUP_DIR" "$TMP_DIR"
+ensure_base_deps() {
+  # UI + archiver
+  for p in dialog zip unzip git curl feh; do need "$p"; done
 }
 
-pause_msg() {
-  dialog --msgbox "$1" 10 70
+pause() { dialog --msgbox "$1" 10 70; }
+
+ensure_build_deps() {
+  # Build deps for suckless (dwm/st)
+  sudo apt update -y
+  sudo apt install -y build-essential pkg-config \
+    libx11-dev libxft-dev libxinerama-dev libharfbuzz-dev
 }
 
-# Prüft, ob ein Pfad existiert, dann kopieren
-copy_safe() {
-  local src="$1"
-  local dst="$2"
-  if [ -e "$src" ]; then
-    cp -a "$src" "$dst" 2>/dev/null
+line_in_file() {
+  local line="$1" file="$2"
+  grep -Fqx -- "$line" "$file" 2>/dev/null || echo "$line" >> "$file"
+}
+
+# ────────────────────────────────────────────────────────────
+# Install: your DWM from ~/.config/suckless/dwm
+# ────────────────────────────────────────────────────────────
+install_dwm_from_home() {
+  ensure_build_deps
+  local SRC="$HOME/.config/suckless/dwm"
+  if [ ! -d "$SRC" ]; then
+    pause "❌ DWM source not found:\n$SRC"
+    return
+  fi
+  dialog --infobox "🧱 Building DWM from $SRC ..." 5 60; sleep 0.5
+  ( cd "$SRC" && make clean >/dev/null 2>&1 || true && sudo make install )
+  if command -v dwm >/dev/null 2>&1; then
+    pause "✅ DWM installed successfully."
+  else
+    pause "❌ DWM build/install failed."
+  fi
+
+  # autostart.sh Unterstützung (falls vorhanden)
+  # Dein Setup nutzt autostart.sh in ~/.config/suckless/dwm
+  local AS="$HOME/.config/suckless/dwm/autostart.sh"
+  if [ -f "$AS" ]; then
+    chmod +x "$AS"
   fi
 }
 
-# Listet erzeugte Teile hübsch auf
-list_parts() {
-  local base="$1"
-  ls -1 "${base}".z?? 2>/dev/null
-  ls -1 "${base}.zip" 2>/dev/null
+# ────────────────────────────────────────────────────────────
+# Install extras (dunst, rofi, picom, sxhkd, kitty, zsh + oh-my-zsh + p10k)
+# ────────────────────────────────────────────────────────────
+install_extras() {
+  sudo apt update -y
+  sudo apt install -y dunst rofi picom sxhkd kitty zsh fonts-powerline
+
+  # Oh-My-Zsh (non-interactive) + Powerlevel10k
+  if [ ! -d "$HOME/.oh-my-zsh" ]; then
+    dialog --infobox "🐚 Installing Oh-My-Zsh..." 5 50; sleep 0.5
+    RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
+      sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" >/dev/null 2>&1 || true
+  fi
+  if [ ! -d "$HOME/.powerlevel10k" ]; then
+    dialog --infobox "⭐ Installing Powerlevel10k..." 5 50; sleep 0.5
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$HOME/.powerlevel10k" >/dev/null 2>&1 || true
+  fi
+  # .zshrc anpassen, p10k hooken
+  local ZRC="$HOME/.zshrc"
+  touch "$ZRC"
+  line_in_file 'export ZSH="$HOME/.oh-my-zsh"' "$ZRC"
+  line_in_file 'ZSH_THEME="powerlevel10k/powerlevel10k"' "$ZRC"
+  line_in_file 'source "$HOME/.powerlevel10k/powerlevel10k.zsh-theme"' "$ZRC"
+  line_in_file 'plugins=(git)' "$ZRC"
+  # default shell optional
+  if [ "$(basename "$(getent passwd "$USER" | cut -d: -f7)")" != "zsh" ] && command -v zsh >/dev/null; then
+    chsh -s "$(command -v zsh)" || true
+  fi
+
+  pause "✅ Extras installed.\n(You may log out/in to use zsh as default.)"
 }
 
-# ── BACKUP ────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
+# ZRAM – install & activate
+# ────────────────────────────────────────────────────────────
+enable_zram() {
+  sudo apt install -y zram-tools
+  local CFG="/etc/default/zramswap"
+  sudo bash -c "cat > '$CFG' <<'EOF'
+# zramswap config
+ALGO=zstd
+PERCENT=50
+PRIORITY=100
+EOF"
+  sudo systemctl enable --now zramswap.service
+  pause "✅ ZRAM enabled (zstd, 50%)."
+}
+
+# ────────────────────────────────────────────────────────────
+# Soundfix integration – ask & hook into autostart.sh
+# ────────────────────────────────────────────────────────────
+integrate_soundfix() {
+  local SUGGEST1="$HOME/soundfix.sh"
+  local SUGGEST2="$HOME/.config/suckless/scripts/soundfix.sh"
+  local SEL
+  SEL=$(dialog --stdout --title "🔊 Soundfix Script" --fselect "$HOME/" 15 70)
+  if [ -z "$SEL" ] || [ ! -f "$SEL" ]; then
+    pause "⚠️ No script selected. Cancelled."
+    return
+  fi
+  chmod +x "$SEL"
+
+  local AS="$HOME/.config/suckless/dwm/autostart.sh"
+  mkdir -p "$(dirname "$AS")"
+  touch "$AS"; chmod +x "$AS"
+
+  if grep -Fq "$SEL" "$AS"; then
+    pause "ℹ️ Soundfix already present in autostart.sh."
+  else
+    echo "bash \"$SEL\" &" >> "$AS"
+    pause "✅ Soundfix hooked into autostart.sh:\n$AS"
+  fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Backup (AES-256 + split) & Restore (any name)
+# ────────────────────────────────────────────────────────────
 create_backup() {
-  ensure_deps
-  local DATE BASENAME WORK
-  DATE=$(date +%Y-%m-%d_%H-%M)
-  BASENAME="desktop-backup_${DATE}"
-  WORK="$TMP_DIR/$BASENAME"
-  rm -rf "$WORK"
-  mkdir -p "$WORK/config" "$WORK/home" "$WORK/fonts"
+  ensure_base_deps
+  mkdir -p "$BACKUP_DIR"
+  local TS BASENAME TMP
+  TS=$(date +%Y-%m-%d_%H-%M)
+  BASENAME="dwm-backup_${TS}"
+  TMP="$BACKUP_DIR/.tmp_$TS"
+  mkdir -p "$TMP/config" "$TMP/home" "$TMP/fonts"
 
-  # Checkliste anzeigen
-  local items=()
-  local idx=1
-  for path in "${INCLUDE_PATHS[@]}"; do
-    items+=("$idx" "$path" "on")
-    ((idx++))
-  done
+  # Default include paths (deine Liste)
+  local include=(
+    "$HOME/.config/suckless"
+    "$HOME/.config/dunst"
+    "$HOME/.config/picom"
+    "$HOME/.config/rofi"
+    "$HOME/.config/sxhkd"
+    "$HOME/.config/kitty"
+    "$HOME/.zshrc"
+    "$HOME/.p10k.zsh"
+    "$HOME/.oh-my-zsh"
+    "$HOME/.local/share/fonts"
+    "$HOME/.local/bin"
+    "$HOME/bin"
+  )
 
+  # Checkliste
+  local items=() i=1
+  for p in "${include[@]}"; do items+=("$i" "$p" "on"); ((i++)); done
   local pick
-  pick=$(dialog --stdout --separate-output --checklist "Select items to include in the backup:" 20 80 12 "${items[@]}")
-  [ -z "$pick" ] && pause_msg "Backup canceled." && return
+  pick=$(dialog --stdout --separate-output --checklist "Select items to include:" 20 80 12 "${items[@]}")
+  [ -z "$pick" ] && pause "Cancelled." && return
 
-  dialog --infobox "📦 Collecting files..." 5 50
-  sleep 0.3
-
-  # Auswahl kopieren
-  idx=1
+  dialog --infobox "📦 Collecting files..." 5 40; sleep 0.3
+  i=1
   while read -r sel; do
-    for p in "${INCLUDE_PATHS[@]}"; do
-      if [ "$sel" -eq "$idx" ]; then
+    for p in "${include[@]}"; do
+      if [ "$sel" -eq "$i" ] && [ -e "$p" ]; then
         case "$p" in
-          "$HOME/.config/"*) copy_safe "$p" "$WORK/config/" ;;
-          "$HOME/.local/share/fonts") copy_safe "$p" "$WORK/fonts/" ;;
-          "$HOME/.zshrc"|"$HOME/.p10k.zsh"|"$HOME/.oh-my-zsh") copy_safe "$p" "$WORK/home/" ;;
-          "$HOME/bin"|"$HOME/.local/bin") copy_safe "$p" "$WORK/" ;;
-          *) copy_safe "$p" "$WORK/" ;;
+          "$HOME/.config/"*) cp -a "$p" "$TMP/config/" 2>/dev/null || true ;;
+          "$HOME/.local/share/fonts") cp -a "$p" "$TMP/fonts/" 2>/dev/null || true ;;
+          "$HOME/.zshrc"|"$HOME/.p10k.zsh"|"$HOME/.oh-my-zsh") cp -a "$p" "$TMP/home/" 2>/dev/null || true ;;
+          "$HOME/.local/bin"|"$HOME/bin") cp -a "$p" "$TMP/" 2>/dev/null || true ;;
+          *) cp -a "$p" "$TMP/" 2>/dev/null || true ;;
         esac
       fi
-      ((idx++))
+      ((i++))
     done
-    idx=1
+    i=1
   done <<< "$pick"
 
-  # Passwort abfragen + bestätigen (AES-256)
-  local PASS1 PASS2
-  PASS1=$(dialog --insecure --passwordbox "Enter password for encrypted backup (AES-256):" 10 60 3>&1 1>&2 2>&3)
-  [ $? -ne 0 ] && pause_msg "Backup canceled." && rm -rf "$WORK" && return
-  PASS2=$(dialog --insecure --passwordbox "Confirm password:" 10 60 3>&1 1>&2 2>&3)
-  if [ "$PASS1" != "$PASS2" ]; then
-    pause_msg "⚠️  Passwords do not match."
-    rm -rf "$WORK"
-    return
-  fi
+  # Passwort
+  local P1 P2
+  P1=$(dialog --insecure --passwordbox "Enter password (AES-256):" 10 60 3>&1 1>&2 2>&3) || { rm -rf "$TMP"; pause "Cancelled."; return; }
+  P2=$(dialog --insecure --passwordbox "Confirm password:" 10 60 3>&1 1>&2 2>&3) || { rm -rf "$TMP"; pause "Cancelled."; return; }
+  [ "$P1" != "$P2" ] && { rm -rf "$TMP"; pause "⚠️ Passwords do not match."; return; }
 
-  dialog --infobox "🗜 Creating AES-256 encrypted, split archive..." 5 70
-  sleep 0.3
+  dialog --infobox "🗜 Creating encrypted split archive..." 5 60; sleep 0.3
+  ( cd "$TMP" && zip -r -e -P "$P1" -s "$SPLIT_SIZE" "$BACKUP_DIR/$BASENAME.zip" . >/dev/null )
+  rm -rf "$TMP"
 
-  # Archiv erstellen (AES-256 mit -e) + Split in $SPLIT_SIZE
-  (
-    cd "$WORK" || exit 1
-    # -e aktiviert AES-Verschlüsselung; -P übergibt das Passwort; -s splittet
-    zip -r -e -P "$PASS1" -s "$SPLIT_SIZE" "$BACKUP_DIR/$BASENAME.zip" . >/dev/null 2>&1
-  )
-  local RC=$?
-
-  rm -rf "$WORK"
-
-  if [ $RC -ne 0 ]; then
-    pause_msg "❌ Backup failed.\nCheck permissions and free space."
-  else
-    local parts
-    parts=$(list_parts "$BACKUP_DIR/$BASENAME")
-    pause_msg "✅ Encrypted, split backup created:\n\n$parts"
-  fi
+  local parts; parts=$(ls -1 "$BACKUP_DIR/$BASENAME".z?? 2>/dev/null || true; ls -1 "$BACKUP_DIR/$BASENAME.zip")
+  pause "✅ Backup created:\n$parts"
 }
 
-# ── RESTORE ───────────────────────────────────────────────────
 restore_backup() {
-  ensure_deps
-  local FILE
-  FILE=$(dialog --stdout --fselect "$BACKUP_DIR/" 15 80)
-  [ -z "$FILE" ] && pause_msg "Restore canceled." && return
+  ensure_base_deps
+  mkdir -p "$BACKUP_DIR"
+  dialog --msgbox "Select the .zip file. Matching .z01/.z02 parts in the same folder are auto-detected." 8 60
+  local ZIP; ZIP=$(dialog --stdout --fselect "$BACKUP_DIR/" 15 70) || { pause "Cancelled."; return; }
+  [ -z "$ZIP" ] && { pause "Cancelled."; return; }
+  case "$ZIP" in *.zip) ;; *) pause "⚠️ Please select the .zip (not .z01)."; return;; esac
 
-  case "$FILE" in
-    *.zip) ;; # ok
-    *) pause_msg "⚠️  Please select the .zip file (not .z01). The .z0N parts must be in the same folder." && return ;;
-  esac
+  local PASS; PASS=$(dialog --insecure --passwordbox "Enter password:" 10 60 3>&1 1>&2 2>&3) || { pause "Cancelled."; return; }
 
-  local PASS
-  PASS=$(dialog --insecure --passwordbox "Enter password to decrypt backup:" 10 60 3>&1 1>&2 2>&3)
-  [ $? -ne 0 ] && pause_msg "Restore canceled." && return
+  local BNAME BNOEXT DIR; BNAME="$(basename "$ZIP")"; BNOEXT="${BNAME%.*}"; DIR="$(dirname "$ZIP")"
+  clear
+  echo "🧩 Restore\n→ Base: $BNOEXT\n→ Dir:  $DIR"
+  cd "$DIR"
 
-  dialog --infobox "📂 Decrypting & extracting archive..." 5 70
-  sleep 0.3
+  echo "🔎 Checking parts..."
+  local MISSING=0
+  for f in "$BNOEXT".z01 "$BNOEXT".z02 "$BNOEXT".z03; do
+    [ -f "$f" ] || continue
+  done
 
-  local RESTORE_TMP
-  RESTORE_TMP="$TMP_DIR/restore"
-  rm -rf "$RESTORE_TMP"
-  mkdir -p "$RESTORE_TMP"
+  echo "🔓 Extracting..."
+  unzip -P "$PASS" "$BNAME" -d "$HOME" || { dialog --msgbox "❌ Wrong password or corrupted archive." 7 60; return; }
+  fc-cache -fv >/dev/null 2>&1 || true
 
-  # unzip erkennt automatisch .z01/.z02… wenn die .zip ausgewählt wurde
-  unzip -P "$PASS" -q "$FILE" -d "$RESTORE_TMP"
-  if [ $? -ne 0 ]; then
-    rm -rf "$RESTORE_TMP"
-    pause_msg "❌ Wrong password or corrupted archive."
-    return
-  fi
-
-  dialog --infobox "♻️ Copying files back to your system..." 5 70
-  sleep 0.3
-
-  # Zurückspielen
-  mkdir -p "$HOME/.config" "$HOME/.local/share/fonts" "$HOME/bin" "$HOME/.local/bin"
-  cp -a "$RESTORE_TMP/config/." "$HOME/.config/" 2>/dev/null
-  cp -a "$RESTORE_TMP/home/." "$HOME/" 2>/dev/null
-  cp -a "$RESTORE_TMP/fonts/." "$HOME/.local/share/fonts/" 2>/dev/null
-  cp -a "$RESTORE_TMP/bin/." "$HOME/bin/" 2>/dev/null
-  cp -a "$RESTORE_TMP/local/bin/." "$HOME/.local/bin/" 2>/dev/null
-  fc-cache -fv >/dev/null 2>&1
-
-  rm -rf "$RESTORE_TMP"
-  pause_msg "✅ Encrypted split-backup successfully restored."
+  dialog --msgbox "✅ Restore complete to your HOME." 6 50
 }
 
-# ── MENU ──────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
+# Wallpaper helper (optional, if 1.png exists)
+# ────────────────────────────────────────────────────────────
+wallpaper_hook() {
+  local WP="$HOME/.config/suckless/wallpapers/1.png"
+  local AS="$HOME/.config/suckless/dwm/autostart.sh"
+  [ -f "$WP" ] || return 0
+  mkdir -p "$(dirname "$AS")"; touch "$AS"; chmod +x "$AS"
+  if ! grep -Fq 'feh --bg-fill "$HOME/.config/suckless/wallpapers/1.png"' "$AS" 2>/dev/null; then
+    echo 'feh --bg-fill "$HOME/.config/suckless/wallpapers/1.png" &' >> "$AS"
+  fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Menu
+# ────────────────────────────────────────────────────────────
 main_menu() {
-  ensure_deps
+  ensure_base_deps
+  mkdir -p "$BACKUP_DIR"
   while true; do
-    CHOICE=$(dialog --clear --backtitle "🔐 Desktop Backup Tool – AES-256 + Split" \
-      --title "Main Menu" \
-      --menu "Choose an action:" 15 70 5 \
-      1 "Create encrypted split backup" \
-      2 "Restore encrypted backup" \
-      3 "Show backup folder" \
-      4 "Exit" \
-      3>&1 1>&2 2>&3)
+    CHOICE=$(dialog --clear --backtitle "$TITLE" --title "Main Menu" --menu "Choose an action:" 18 80 10 \
+      1 "Install DWM from ~/.config/suckless/dwm (build & install)" \
+      2 "Install extras (dunst, rofi, picom, sxhkd, kitty, zsh + oh-my-zsh + p10k)" \
+      3 "Enable ZRAM now (zstd, 50%)" \
+      4 "Integrate soundfix.sh into autostart.sh" \
+      5 "Create encrypted split backup (AES-256)" \
+      6 "Restore encrypted backup (any name)" \
+      7 "Add wallpaper hook (feh 1.png)" \
+      8 "Exit" \
+      3>&1 1>&2 2>&3) || { clear; exit 0; }
 
     case "$CHOICE" in
-      1) create_backup ;;
-      2) restore_backup ;;
-      3) pause_msg "Backup folder:\n$BACKUP_DIR" ;;
-      4|*) clear; exit 0 ;;
+      1) install_dwm_from_home; wallpaper_hook ;;
+      2) install_extras ;;
+      3) enable_zram ;;
+      4) integrate_soundfix ;;
+      5) create_backup ;;
+      6) restore_backup ;;
+      7) wallpaper_hook; pause "✅ Wallpaper hook added (if 1.png exists)." ;;
+      8) clear; exit 0 ;;
     esac
   done
 }
 
-# ── START ─────────────────────────────────────────────────────
 main_menu
