@@ -209,9 +209,16 @@ restore_backup() {
   [ -z "${ZIP:-}" ] && { pause "Cancelled."; return; }
   [ ! -f "$ZIP" ] && { pause "❌ Selected file not found:\n$ZIP"; return; }
 
-  # Passwort sicher abfragen
+  # 🔐 Passwort sicher abfragen (set -u deaktiviert)
+  set +u
   local PW
-  PW="$(ask_password_once)" || { pause "❌ Cancelled or invalid password."; return; }
+  PW=$(dialog --insecure --passwordbox "Enter decryption password:" 10 60 3>&1 1>&2 2>&3)
+  local rc=$?
+  set -u
+  if [ $rc -ne 0 ] || [ -z "$PW" ]; then
+    pause "❌ Cancelled or empty password."
+    return
+  fi
 
   local DIRNAME BASENAME
   DIRNAME="$(dirname -- "$ZIP")"
@@ -227,8 +234,7 @@ restore_backup() {
   fi
   rm -f /tmp/precheck
 
-  dialog --infobox "🔓 Decrypting and restoring...
-Please wait..." 7 60
+  dialog --infobox "🔓 Decrypting and restoring...\nPlease wait..." 7 60
   sleep 1
 
   unzip -o -P "$PW" -- "$BASENAME" -d "$HOME" >/tmp/unzip_log 2>&1
@@ -256,6 +262,7 @@ $(hr)
 $(hr)
 ✅ All systems online, Commander Dennis!" 18 80
 }
+
 
 # ───────────────────────────────────────────────
 # Hauptmenü
