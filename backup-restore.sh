@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # ╔══════════════════════════════════════════════════════════════════════╗
-# ║  🧩 DWM Backup & Restore Tool v1.0                                   ║
-# ║  AES-256 encrypted, split/single, verified,                          ║
+# ║  🧩 DWM Backup & Restore Tool v1.1                                   ║
+# ║  AES-256 encrypted, verified, no progress bars, safe dialogs         ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
-# Kein -e, damit dialog-Exitcodes nicht die Shell schließen
+# kein „-e“: verhindert, dass dialog-Abbrüche das ganze Skript beenden
 set -uo pipefail
 
 TITLE="🧠 DWM Backup & Restore Tool"
 BACKUP_DIR="./backups"
-SPLIT_SIZE="95m"  # ~100 MB parts
+SPLIT_SIZE="95m"  # ~100 MB für GitHub-kompatible Splits
 
 # ───────────────────────────────────────────────
-# Helpers
+# Helper-Funktionen
 # ───────────────────────────────────────────────
 pause() { dialog --msgbox "$1" 15 75; }
 
@@ -31,12 +31,20 @@ ensure_base_deps() {
 
 hr() { printf '%0.s─' {1..70}; }
 
+# ───────────────────────────────────────────────
+# Passwortdialoge (robust gegen ESC / Abbruch)
+# ───────────────────────────────────────────────
 ask_password_twice() {
-  local P1 P2 rc
+  set +eu
+  local P1 P2
   P1=$(dialog --insecure --passwordbox "🔒 Enter password for encryption:" 10 60 3>&1 1>&2 2>&3)
-  rc=$?; [ $rc -ne 0 ] && return 1
+  local rc1=$?
+  [ $rc1 -ne 0 ] && set -eu && return 1
+
   P2=$(dialog --insecure --passwordbox "🔑 Confirm password:" 10 60 3>&1 1>&2 2>&3)
-  rc=$?; [ $rc -ne 0 ] && return 1
+  local rc2=$?
+  set -eu
+  [ $rc2 -ne 0 ] && return 1
   [ -z "$P1" ] && return 1
   [ "$P1" != "$P2" ] && return 1
   echo "$P1"
@@ -44,17 +52,19 @@ ask_password_twice() {
 }
 
 ask_password_once() {
+  set +eu
   dialog --insecure --passwordbox "Enter decryption password:" 10 60 2> /tmp/pw
   local rc=$?
-  if [ $rc -ne 0 ]; then rm -f /tmp/pw; return 1; fi
+  if [ $rc -ne 0 ]; then rm -f /tmp/pw; set -eu; return 1; fi
   local P; P="$(cat /tmp/pw)"; rm -f /tmp/pw
+  set -eu
   [ -z "$P" ] && return 1
   echo "$P"
   return 0
 }
 
 # ───────────────────────────────────────────────
-# Create encrypted backup (no progress bar)
+# Backup erstellen (AES-256, kein Progress)
 # ───────────────────────────────────────────────
 create_backup() {
   ensure_base_deps
@@ -65,7 +75,7 @@ create_backup() {
   BASENAME="dwm-backup_${TS}"
   ZIP_PATH="$BACKUP_DIR/$BASENAME.zip"
 
-  # Format auswählen
+  # Format wählen
   local MODE SPLIT_ARG
   MODE=$(dialog --stdout --menu "📦 Choose backup format:" 12 60 4 \
     1 "Single AES-256 ZIP (one large file)" \
@@ -74,11 +84,11 @@ create_backup() {
   SPLIT_ARG=""
   [ "$MODE" = "2" ] && SPLIT_ARG="-s $SPLIT_SIZE"
 
-  # Passwort
+  # Passwort sicher abfragen
   local PW
-  PW="$(ask_password_twice)" || { pause "Cancelled or invalid password."; return; }
+  PW="$(ask_password_twice)" || { pause "❌ Cancelled or invalid password."; return; }
 
-  # Pfade/Filer
+  # zu sichernde Pfade
   local INCLUDE_PATHS=(
     "$HOME/.config/suckless"
     "$HOME/.config/rofi"
@@ -94,15 +104,16 @@ create_backup() {
   local EST_SIZE
   EST_SIZE=$(du -ch "${INCLUDE_PATHS[@]}" 2>/dev/null | tail -n1 | awk '{print $1}')
 
-  dialog --infobox "📦 Creating AES-256 encrypted backup...\n💾 Estimated size: ${EST_SIZE:-unknown}\n\nThis may take a moment..." 8 70
+  dialog --infobox "📦 Creating AES-256 encrypted backup...
+💾 Estimated size: ${EST_SIZE:-unknown}
+Please wait..." 8 70
   sleep 1
 
-  # Backup erstellen (foreground)
   zip -r -e -P "$PW" $SPLIT_ARG "$ZIP_PATH" "${INCLUDE_PATHS[@]}" >/dev/null 2>&1
   local rc=$?
 
   if [ $rc -ne 0 ]; then
-    pause "❌ Backup failed (zip returned $rc)."
+    pause "❌ Backup failed (zip error $rc)."
     return
   fi
 
@@ -115,7 +126,7 @@ create_backup() {
 }
 
 # ───────────────────────────────────────────────
-# Verify backup (integrity + content stats)
+# Backup-Integrität prüfen
 # ───────────────────────────────────────────────
 verify_backup() {
   local MAIN_ZIP="$1" PASSWORD="$2"
@@ -172,7 +183,7 @@ $(hr)
 }
 
 # ───────────────────────────────────────────────
-# Restore backup (no progress bar)
+# Backup wiederherstellen (kein Progress)
 # ───────────────────────────────────────────────
 restore_backup() {
   ensure_base_deps
@@ -198,8 +209,9 @@ restore_backup() {
   [ -z "${ZIP:-}" ] && { pause "Cancelled."; return; }
   [ ! -f "$ZIP" ] && { pause "❌ Selected file not found:\n$ZIP"; return; }
 
+  # Passwort sicher abfragen
   local PW
-  PW="$(ask_password_once)" || { pause "Cancelled or empty password."; return; }
+  PW="$(ask_password_once)" || { pause "❌ Cancelled or invalid password."; return; }
 
   local DIRNAME BASENAME
   DIRNAME="$(dirname -- "$ZIP")"
@@ -207,7 +219,6 @@ restore_backup() {
 
   cd "$DIRNAME" || { pause "⚠️ Cannot cd into:\n$DIRNAME"; return; }
 
-  # Passwort vorab testen
   unzip -t -P "$PW" -- "$BASENAME" >/tmp/precheck 2>&1 || true
   if grep -qi "incorrect password" /tmp/precheck; then
     rm -f /tmp/precheck
@@ -216,7 +227,8 @@ restore_backup() {
   fi
   rm -f /tmp/precheck
 
-  dialog --infobox "🔓 Decrypting and restoring...\n\nPlease wait..." 7 60
+  dialog --infobox "🔓 Decrypting and restoring...
+Please wait..." 7 60
   sleep 1
 
   unzip -o -P "$PW" -- "$BASENAME" -d "$HOME" >/tmp/unzip_log 2>&1
@@ -246,7 +258,7 @@ $(hr)
 }
 
 # ───────────────────────────────────────────────
-# Main Menu
+# Hauptmenü
 # ───────────────────────────────────────────────
 main_menu() {
   ensure_base_deps
