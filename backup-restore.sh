@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ╔═════════════════════════════════════════════════════════════════════════╗
-# ║  🧩 DWM Backup & Restore Tool v1.0                                      ║
-# ║  AES-256 encrypted, progress bar, split/single, verified,               ║
+# ║  🧩 DWM Backup & Restore Tool v1.0                                    ║
+# ║  AES-256 encrypted, split/single, verified, with progress bars          ║
 # ╚═════════════════════════════════════════════════════════════════════════╝
 
 set -euo pipefail
@@ -10,7 +10,7 @@ BACKUP_DIR="./backups"
 SPLIT_SIZE="95m"
 
 # ───────────────────────────────────────────────
-# Helper functions
+# Helpers
 # ───────────────────────────────────────────────
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -24,39 +24,31 @@ pause() { dialog --msgbox "$1" 15 75; }
 ensure_base_deps() {
   echo "📦 Checking dependencies..."
   sudo apt update -y >/dev/null 2>&1
-  for pkg in dialog zip unzip sha256sum pv; do
+  for pkg in dialog zip unzip sha256sum; do
     need "$pkg"
   done
 }
 
 hr() { printf '%0.s─' {1..70}; }
 
-progress_pipe() {
-  # Reads stdin and shows progress bar using pv
-  pv -pteb -s "$1" -N "Processing" >/dev/null
-}
-
 # ───────────────────────────────────────────────
-# Create encrypted backup
+# Create encrypted backup (with live progress)
 # ───────────────────────────────────────────────
 create_backup() {
   ensure_base_deps
   mkdir -p "$BACKUP_DIR"
 
-  local TS=$(date +%Y-%m-%d_%H-%M)
-  local BASENAME="dwm-backup_$TS"
-  local ZIP_PATH="$BACKUP_DIR/$BASENAME.zip"
+  local TS BASENAME ZIP_PATH MODE SPLIT_ARG PW1 PW2
+  TS=$(date +%Y-%m-%d_%H-%M)
+  BASENAME="dwm-backup_$TS"
+  ZIP_PATH="$BACKUP_DIR/$BASENAME.zip"
 
-  # Split or single
-  local MODE
   MODE=$(dialog --stdout --menu "📦 Choose backup format:" 12 60 4 \
     1 "Single AES-256 ZIP (one large file)" \
     2 "Split into 100 MB chunks (GitHub-friendly)") || return
-  local SPLIT_ARG=""
+  SPLIT_ARG=""
   [ "$MODE" = "2" ] && SPLIT_ARG="-s $SPLIT_SIZE"
 
-  # Password
-  local PW1 PW2
   PW1=$(dialog --insecure --passwordbox "🔒 Enter password for encryption:" 10 60 3>&1 1>&2 2>&3) || return
   PW2=$(dialog --insecure --passwordbox "🔑 Confirm password:" 10 60 3>&1 1>&2 2>&3) || return
   if [ "$PW1" != "$PW2" ] || [ -z "$PW1" ]; then pause "⚠️ Passwords do not match or are empty."; return; fi
@@ -73,30 +65,34 @@ create_backup() {
     "$HOME/.p10k.zsh"
   )
 
-  local FILE_COUNT
-  FILE_COUNT=$(find "${INCLUDE_PATHS[@]}" 2>/dev/null | wc -l)
-  local TOTAL_SIZE
-  TOTAL_SIZE=$(du -ch "${INCLUDE_PATHS[@]}" 2>/dev/null | tail -n 1 | awk '{print $1}')
+  local TOTAL_BYTES
+  TOTAL_BYTES=$(du -cb "${INCLUDE_PATHS[@]}" 2>/dev/null | tail -n1 | awk '{print $1}')
+  [ -z "$TOTAL_BYTES" ] && TOTAL_BYTES=1000000
 
-  dialog --infobox "📦 Creating AES-256 encrypted backup...\n⌛ Estimated files: $FILE_COUNT\n💾 Total size: $TOTAL_SIZE" 8 70
+  dialog --infobox "📦 Creating AES-256 encrypted backup...\n⌛ Estimated size: $(du -ch "${INCLUDE_PATHS[@]}" | tail -n1 | awk '{print $1}')" 8 70
   sleep 1
 
-  # FIFO for live progress
-  local FIFO=/tmp/backup_progress_$$
-  mkfifo "$FIFO"
+  zip -r -e -P "$PW1" $SPLIT_ARG "$ZIP_PATH" "${INCLUDE_PATHS[@]}" >/dev/null 2>&1 &
+  local ZIP_PID=$!
 
-  # Show gauge in background
-  dialog --gauge "Compressing and encrypting..." 10 70 0 < "$FIFO" &
-  local GAUGE_PID=$!
+  (
+    while kill -0 "$ZIP_PID" 2>/dev/null; do
+      sleep 1
+      local CUR_SIZE=0
+      if [ -f "$ZIP_PATH" ]; then
+        CUR_SIZE=$(du -b "$ZIP_PATH" | awk '{print $1}')
+      elif ls "$BACKUP_DIR"/"${BASENAME}".z* >/dev/null 2>&1; then
+        CUR_SIZE=$(du -cb "$BACKUP_DIR"/"${BASENAME}".z* | tail -n1 | awk '{print $1}')
+      fi
+      local PERCENT=$(( CUR_SIZE * 100 / TOTAL_BYTES ))
+      [ $PERCENT -gt 100 ] && PERCENT=100
+      echo "$PERCENT"
+    done
+    echo 100
+  ) | dialog --gauge "Compressing and encrypting..." 10 70 0
 
-  # Run zip with pv, send progress into FIFO
-  ( zip -r -e -P "$PW1" $SPLIT_ARG "$ZIP_PATH" "${INCLUDE_PATHS[@]}" 2>/dev/null | pv -n -s "$FILE_COUNT" > "$FIFO" ) >/dev/null 2>&1
-
-  # Cleanup
-  wait $GAUGE_PID 2>/dev/null || true
-  rm -f "$FIFO"
-
-  if [ ! -f "$ZIP_PATH" ]; then
+  wait "$ZIP_PID" 2>/dev/null || true
+  if [ ! -f "$ZIP_PATH" ] && ! ls "$BACKUP_DIR"/"${BASENAME}".z* >/dev/null 2>&1; then
     pause "❌ Backup failed – no archive created."
     return
   fi
@@ -104,22 +100,11 @@ create_backup() {
   verify_backup "$ZIP_PATH" "$PW1"
 }
 
-  # Use pv for visible progress
-  {
-    zip -r -e -P "$PW1" $SPLIT_ARG "$ZIP_PATH" "${INCLUDE_PATHS[@]}" >/dev/null 2>&1
-  } | pv -n -s "$FILE_COUNT" >/dev/null 2>&1 | dialog --gauge "Compressing and encrypting..." 10 70
-
-  [ ! -f "$ZIP_PATH" ] && { pause "❌ Backup failed – no archive created."; return; }
-
-  verify_backup "$ZIP_PATH" "$PW1"
-}
-
 # ───────────────────────────────────────────────
-# Verify backup integrity + analyze content
+# Verify backup integrity
 # ───────────────────────────────────────────────
 verify_backup() {
-  local MAIN_ZIP="$1"
-  local PASSWORD="$2"
+  local MAIN_ZIP="$1" PASSWORD="$2"
   [ -z "$MAIN_ZIP" ] && { pause "❌ No archive path provided."; return; }
   [ ! -f "$MAIN_ZIP" ] && { pause "❌ File not found: $MAIN_ZIP"; return; }
 
@@ -137,7 +122,6 @@ verify_backup() {
   unzip -t -P "$PASSWORD" "$PREFIX.zip" >/tmp/verify_log 2>&1
   local STATUS=$?
 
-  # Content analysis
   local TMPDIR="/tmp/dwm_list_$RANDOM"
   mkdir -p "$TMPDIR"
   unzip -l -P "$PASSWORD" "$PREFIX.zip" >"$TMPDIR/list.txt" 2>/dev/null || true
@@ -167,7 +151,7 @@ $(hr)
 }
 
 # ───────────────────────────────────────────────
-# Restore backup (with progress)
+# Restore backup (with progress bar)
 # ───────────────────────────────────────────────
 restore_backup() {
   ensure_base_deps
@@ -179,7 +163,6 @@ restore_backup() {
     while IFS= read -r -d '' f; do FOUND_FILES+=("$f"); done \
       < <(find "$DIR" -maxdepth 1 -type f -name "*.zip" -print0 2>/dev/null)
   done
-
   [ ${#FOUND_FILES[@]} -eq 0 ] && { pause "⚠️ No backup ZIPs found."; return; }
 
   local MENU_ITEMS=()
@@ -197,31 +180,32 @@ restore_backup() {
   local BASENAME;   BASENAME="$(basename -- "$ZIP")"
   local BASE_NOEXT; BASE_NOEXT="${BASENAME%.*}"
 
-  [ -n "${DIRNAME:-}" ] || { pause "❌ DIRNAME not set."; return; }
-  [ -n "${BASENAME:-}" ] || { pause "❌ BASENAME not set."; return; }
-
   cd "$DIRNAME" || { pause "⚠️ Cannot cd into:\n$DIRNAME"; return; }
 
-  echo "🔓 Decrypting..."
-  {
-    unzip -P "$PW" -- "$BASENAME" -d "$HOME" >/tmp/unzip_log 2>&1
-  } | pv -n >/dev/null 2>&1 | dialog --gauge "Decrypting and restoring backup..." 10 70
+  local TOTAL_BYTES
+  TOTAL_BYTES=$(du -b "$ZIP" 2>/dev/null | awk '{print $1}')
+  [ -z "$TOTAL_BYTES" ] && TOTAL_BYTES=1000000
 
-  local STATUS=$?
-  if [ $STATUS -ne 0 ]; then
-    if grep -qi "incorrect password" /tmp/unzip_log; then
-      pause "❌ Wrong password."
-    elif grep -qi "End-of-central-directory" /tmp/unzip_log; then
-      pause "⚠️ Incomplete archive."
-    else
-      pause "⚠️ Extraction failed.\n\n$(head -n 5 /tmp/unzip_log)"
-    fi
-    rm -f /tmp/unzip_log
-    return
-  fi
+  unzip -P "$PW" -- "$BASENAME" -d "$HOME" >/dev/null 2>&1 &
+  local UNZIP_PID=$!
 
-  rm -f /tmp/unzip_log
+  (
+    while kill -0 "$UNZIP_PID" 2>/dev/null; do
+      sleep 1
+      local CUR_SIZE=0
+      if [ -d "$HOME/.config/suckless" ]; then
+        CUR_SIZE=$(du -cb "$HOME/.config/suckless" 2>/dev/null | tail -n1 | awk '{print $1}')
+      fi
+      local PERCENT=$(( CUR_SIZE * 100 / TOTAL_BYTES ))
+      [ $PERCENT -gt 100 ] && PERCENT=100
+      echo "$PERCENT"
+    done
+    echo 100
+  ) | dialog --gauge "Decrypting and restoring backup..." 10 70 0
+
+  wait "$UNZIP_PID" 2>/dev/null || true
   fc-cache -fv >/dev/null 2>&1 || true
+
   dialog --msgbox "🧩 Restore Complete!\n──────────────────────────────\n📂 Target: $HOME\n🔐 Verified: OK\n──────────────────────────────\n✅ All systems online, Commander Dennis!" 18 80
 }
 
