@@ -11,36 +11,19 @@ Perfect for rebuilding your system after a fresh install — or cloning your per
 
 ---
 
-## ✨ Features
+## 🚀 Features
 
-- 🧱 **Full Debian 13 Minimal setup**  
-  Installs all base X11 + build dependencies  
-  Optional **Liquorix kernel** installation
-  
-- 🔐 **Encrypted Backups (AES-256)**  
-  Backups are protected using **AES-256 encryption** with an interactive **password prompt** during creation and restore.  
-  (Compatible with `unzip` and `7z`.)
+| Category | Description |
+|-----------|-------------|
+| 🧱 DWM | Builds your own source from `~/.config/suckless/dwm` |
+| 🧩 Extras | Installs Dunst, Rofi, Picom, sxhkd, Kitty, ZSH, Oh-My-Zsh, Powerlevel10k |
+| 🧊 ZRAM | Automatically enabled (zstd, 50 %) |
+| 🔊 Soundfix | Select a local `soundfix.sh` to add to `autostart.sh` |
+| 🔐 Backup | AES-256 encrypted, split archives (< 100 MB per part) |
+| 🧠 Restore | Detects any backup name + parts `.z01/.z02/.zip` automatically |
+| 🖼 Wallpaper | Adds feh hook for `~/.config/suckless/wallpapers/1.png` |
+| ⚙️ Deps | Automatically installs `dialog`, `zip`, `unzip`, `feh`, build tools |
 
-- 🎮 **GPU Driver Installer**  
-  Choose NVIDIA / AMD / Intel  
-
-- 💾 **ZRAM activation**  
-  Enables `zram-tools` for fast memory compression  
-
-- 🔊 **SPDIF Soundfix Tool**  
-  Fixes digital audio delay in PipeWire setups  
-
-- 🐧 **Suckless stack**  
-  Auto-installs and builds `dwm`, `st`, and `slstatus`  
-
-- 🧠 **ZSH + Oh-My-Zsh + Powerlevel10k**  
-  Full shell customization out of the box  
-
-- 🌄 **Wallpaper support**  
-  Automatically loads `1.png` from `~/.config/suckless/wallpapers/`  
-
-- 🪶 **Backup & Restore**  
-  One-click zip backup and restore of all configs, fonts, and scripts  
 
 ---
 
