@@ -1,37 +1,53 @@
-# 🧩 DWM Encrypted Backup & Restore Tool
+# 🧩 DWM Encrypted Backup & Restore Tool (v4.1 – Nerd Edition)
 
 **Author:** Dennis Hilk  
-**Version:** v1.0.0  
-**Release Date:** 2025-10-17  
+**Version:** 4.1  
+**License:** MIT  
+**Release Date:** 2025-10-18  
 
 ---
 
 ## 🧠 Overview
 
-A simple and secure **AES-256 encrypted backup & restore tool** for your DWM setup or any configuration files.  
-This minimal version includes **only** the essential backup and restore logic —  
-no DWM installation, no extras, no dependencies beyond basic compression utilities.
+The **DWM Backup & Restore Tool v4.1** is a clean, nerd-approved shell utility  
+for creating **AES-256-encrypted system backups** of your Linux desktop environment.
 
-Perfect for lightweight systems like **Debian 13 Minimal**.
+Supports both **single ZIP archives** and **split archives (100 MB chunks)**  
+for easy GitHub uploads or NAS storage.
+
+Built for 🐧 **Debian 13 Minimal** and fully compatible with your  
+DWM + Rofi + ZSH + Powerlevel10k setup.
 
 ---
 
 ## 🔒 Features
 
-| Feature | Description |
-|----------|-------------|
-| 🔐 AES-256 Encryption | Password-protected backups using the `zip` AES algorithm |
-| 📦 Split Archives | Automatically splits archives into <100 MB chunks (GitHub-friendly) |
-| 🧩 Restore Detection | Finds backups automatically in `./backups` or the script directory |
-| 🧠 Interactive Menu | Clean `dialog`-based TUI for backup and restore |
-| 💾 Offline Ready | Works entirely offline after dependencies are installed |
-| 🐧 Linux Native | Designed for Debian 13 Minimal and similar lightweight distros |
+| 🧩 Feature | 🧠 Description |
+|------------|----------------|
+| 🔐 **AES-256 Encryption** | Secure password-protected backups using `zip -e` |
+| 🧱 **Split or Single Mode** | Choose between one big file or multiple 100 MB chunks |
+| 🧮 **Automatic Verification** | Integrity check after backup (SHA256 + `unzip -t`) |
+| 🧰 **Multi-config Backup** | Includes DWM, Rofi, sxhkd, Kitty, Dunst, Picom, Slstatus, ZSH |
+| 🧾 **Nerd Status UI** | ASCII-style dialog output with icons and checksums |
+| 🧩 **Smart Restore** | Auto-detects backups in `./backups` or script folder |
+| 💬 **Error Handling** | Detects wrong passwords or missing split parts |
+| 🧠 **100 % Offline** | No external API calls — pure bash and dialog magic |
+
+🧾 Menu Overview
+1. 🔒 Create encrypted backup (AES-256)
+2. 🔐 Restore encrypted backup
+3. ❌ Exit
+
+📦 Backup Options
+
+1) Single AES-256 ZIP (one large file)
+2) Split into 100 MB chunks (GitHub-friendly)
 
 ---
 
 ## ⚙️ Dependencies
 
-The script automatically installs them if missing:
+The tool installs missing packages automatically:
 
 ```bash
-dialog zip unzip
+sudo apt install dialog zip unzip sha256sum
