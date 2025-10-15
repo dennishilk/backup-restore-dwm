@@ -25,7 +25,7 @@ Perfect for rebuilding your system after a fresh install — or cloning your per
 | ⚙️ Deps | Automatically installs `dialog`, `zip`, `unzip`, `feh`, build tools |
 
 ## ⚙️ want my full setup ?
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.zip
+> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup-restore.sh
 > 
 > wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z01
 > 
