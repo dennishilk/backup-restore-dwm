@@ -1,66 +1,37 @@
-> ⚡ Your entire DWM desktop — rebuilt, restored, and optimized in minutes.
-> 
-# 🧩 backup-restore-dwm
+# 🧩 DWM Encrypted Backup & Restore Tool (Minimal v2.0)
 
 **Author:** Dennis Hilk  
-**Tested on:** Debian 13 Minimal  
-**License:** MIT  
-
-A complete one-click backup and restore solution for your custom DWM desktop setup.  
-Perfect for rebuilding your system after a fresh install — or cloning your perfect setup across multiple machines.
+**Version:** v2.0.0  
+**Release Date:** 2025-10-17  
 
 ---
 
-## 🚀 Features
+## 🧠 Overview
 
-| Category | Description |
-|-----------|-------------|
-| 🧱 DWM | Builds your own source from `~/.config/suckless/dwm` |
-| 🧩 Extras | Installs Dunst, Rofi, Picom, sxhkd, Kitty, ZSH, Oh-My-Zsh, Powerlevel10k |
-| 🧊 ZRAM | Automatically enabled (zstd, 50 %) |
-| 🔊 Soundfix | Select a local `soundfix.sh` to add to `autostart.sh` |
-| 🔐 Backup | AES-256 encrypted, split archives (< 100 MB per part) |
-| 🧠 Restore | Detects any backup name + parts `.z01/.z02/.zip` automatically |
-| 🖼 Wallpaper | Adds feh hook for `~/.config/suckless/wallpapers/1.png` |
-| ⚙️ Deps | Automatically installs `dialog`, `zip`, `unzip`, `feh`, build tools |
+A simple and secure **AES-256 encrypted backup & restore tool** for your DWM setup or any configuration files.  
+This minimal version includes **only** the essential backup and restore logic —  
+no DWM installation, no extras, no dependencies beyond basic compression utilities.
 
-## ⚙️ want my full setup ?
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup-restore.sh
-> 
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z01
-> 
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z02
-> 
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z03
-> 
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z04
-> 
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z05
-> 
-> wget https://github.com/dennishilk/backup-restore-dwm/releases/download/v1.0.0/backup.z06
+Perfect for lightweight systems like **Debian 13 Minimal**.
 
 ---
 
-## 🧰 Dependencies
+## 🔒 Features
 
-| Package | Purpose |
-|----------|----------|
-| `dialog` | Text-based menu interface |
-| `git`, `curl`, `make`, `gcc`, `build-essential` | Build environment for Suckless tools |
-| `xorg`, `xinit`, `feh`, `picom` | X11 desktop environment |
-| `zsh`, `fonts-powerline` | Shell + Powerlevel10k |
-| `rofi`, `dunst`, `sxhkd`, `kitty` | Desktop utilities |
-| *(optional)* `nvidia-driver`, `firmware-amd-graphics`, `xserver-xorg-video-intel` | GPU drivers |
-| *(optional)* `zram-tools`, `liquorix kernel` | Performance tuning |
-| *(optional)* `zip`, `unzip` | Required for encrypted backups |
+| Feature | Description |
+|----------|-------------|
+| 🔐 AES-256 Encryption | Password-protected backups using the `zip` AES algorithm |
+| 📦 Split Archives | Automatically splits archives into <100 MB chunks (GitHub-friendly) |
+| 🧩 Restore Detection | Finds backups automatically in `./backups` or the script directory |
+| 🧠 Interactive Menu | Clean `dialog`-based TUI for backup and restore |
+| 💾 Offline Ready | Works entirely offline after dependencies are installed |
+| 🐧 Linux Native | Designed for Debian 13 Minimal and similar lightweight distros |
+
 ---
 
-## 🚀 Installation
+## ⚙️ Dependencies
+
+The script automatically installs them if missing:
 
 ```bash
-sudo apt install dialog git curl unzip -y
-mkdir -p ~/.local/bin
-cd ~/.local/bin
-wget https://raw.githubusercontent.com/dennishilk/backup-restore-dwm/main/backup-restore.sh
-chmod +x backup-restore.sh
-
+dialog zip unzip
